@@ -42,9 +42,9 @@ fn main() {
     // Version 1, using a custom future
     //let hello_world = HelloWorld::Connecting(connection).map_err(|e| println!("Error: {:?}", e));
     // Version 2, using combinators
-    let hello_world = connection.and_then(|s| {
-        tokio::io::write_all(s, b"Hello world, Mk2")
-    }).map(|_| println!("Done"))
+    let hello_world = connection
+        .and_then(|s| tokio::io::write_all(s, b"Hello world, Mk2"))
+        .map(|_| println!("Done"))
         .map_err(|e| println!("Error: {:?}", e));
     tokio::run(hello_world);
 }
