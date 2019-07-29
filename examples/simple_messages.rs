@@ -24,7 +24,7 @@ fn main() {
             println!("Message received: {}", msg);
             Ok(())
         })
-            .map_err(|e| println!("error = {:?}", e))
+        .map_err(|e| println!("error = {:?}", e))
     });
 
     tokio::run(future);
@@ -36,12 +36,15 @@ fn main() {
         let stream = stream::iter_ok(1..10).map(|v| v * v);
         // You need to use fold here because the closure must be static, so we can't borrow tx; we have to pass it
         // around
-        tokio::spawn(stream.fold(tx, |tx, v| {
-            thread::sleep(Duration::from_millis(100));
-            println!("Sending a message from producer: {}", v);
-            tx.send(format!("Found a square: {}", v))
-                .map_err(|e| println!("Error: {:?}", e))
-        }).map(|_| ()) //Drop tx handle
+        tokio::spawn(
+            stream
+                .fold(tx, |tx, v| {
+                    thread::sleep(Duration::from_millis(100));
+                    println!("Sending a message from producer: {}", v);
+                    tx.send(format!("Found a square: {}", v))
+                        .map_err(|e| println!("Error: {:?}", e))
+                })
+                .map(|_| ()), //Drop tx handle
         );
 
         rx.for_each(|msg| {
