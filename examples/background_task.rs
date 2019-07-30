@@ -4,6 +4,8 @@ use tokio_threadpool::{blocking, BlockingError};
 use rand::Rng;
 use std::time::{Instant, Duration};
 use futures::Async;
+use tokio_executor::enter;
+use std::thread;
 
 /// A really slow inefficient function for finding out if a value is prime
 fn is_prime(n: u64) -> bool {
@@ -35,21 +37,46 @@ fn find_nth_prime(n: u64) -> u64 {
 /// thread. The future resolves to the prime value and the time it took to find.
 fn async_nth_prime(i: usize, n: u64) -> impl Future<Item=(usize, u64, u64, Duration), Error=BlockingError> {
     // The simplest way to wrap a future around a function is to call `poll_fn`. In fact this is exactly what poll_fn
-    // does: it taskes a fn or closure (which must return Poll<T, E>) and makes a future out of it. In this case
+    // does: it takes a fn or closure (which must return Poll<T, E>) and makes a future out of it. In this case
     // we're going to wrap the super-slow prime finding function and return the job #, n, the prime, and the time it
     // took to calculate.
     poll_fn(move || {
         println!("Starting job {}: {}th prime", i, n);
         // Now we can't really just make our poll function take a long time, because this would block up the worker
         // thread and prevent any other futures in the worker queue from making progress. Instead we delegate the
-        // working to a blocking thread by calling `blocking`
+        // working to a blocking thread by calling `blocking`.
+        // If you comment out the blocking, you'll see the difference
         blocking(move || {
             let start = Instant::now();
             let p = find_nth_prime(n);
             let time = start.elapsed();
             (i, n, p, time)
+//            Ok(Async::Ready((i, n, p, time)))
         })
     })
+}
+
+fn launch_default_executor<F: Future<Item=(), Error=()> + Send + 'static>(future: F) {
+    // Check enter before creating a new Runtime...
+    let mut entered = enter().expect("A tokio runtine is already running");
+    let n_threads = 5;
+    println!("Using {} blocking threads", n_threads);
+    let timer = Instant::now();
+    let mut rt = tokio::runtime::Builder::new()
+        .blocking_threads(n_threads)
+        // Run the work scheduler on one thread so we can really see the effects of using `blocking` above
+        .core_threads(1)
+        .build()
+        .expect("Could not start tokio runtime");
+    rt.spawn(future);
+
+    println!("Starting the Runtime");
+    entered.on_exit(move || {
+        println!("Shutting down. Bye {}s", timer.elapsed().as_millis() as f64 * 0.001);
+    });
+    entered
+        .block_on(rt.shutdown_on_idle())
+        .expect("shutdown cannot error");
 }
 
 fn main() {
@@ -73,18 +100,5 @@ fn main() {
         Ok(())
     });
 
-    let n_threads = 5;
-    println!("Using {} blocking threads", n_threads);
-    let timer = Instant::now();
-    let mut rt = tokio::runtime::Builder::new()
-        .blocking_threads(n_threads)
-        .core_threads(4)
-        .build()
-        .unwrap();
-    rt.spawn(future);
-
-    println!("Starting the Runtime");
-    rt.shutdown_on_idle()
-        .wait().unwrap();
-    println!("Shutting down. Bye {}s", timer.elapsed().as_millis() as f64 * 0.001);
+    launch_default_executor(future);
 }

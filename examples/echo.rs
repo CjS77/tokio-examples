@@ -2,8 +2,12 @@ use tokio::io;
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 
+/// A simple echo server
 fn main() {
     let addr = "127.0.0.1:8777".parse().unwrap();
+    // Tokio provides a bunch of async utils that mirror the sync counterparts in the std library. Here we use the
+    // TcpListener. This binds to a socket and returns something that can produce a tokio::Stream of incoming
+    // conenction futures.
     let listener = TcpListener::bind(&addr).unwrap();
     let server = listener
         .incoming()
